@@ -1,0 +1,52 @@
+{
+    "me": {
+        "user_id": 2001,
+        "user_name": "Hume",
+        "level": "leader",
+        "user_info": "Leader Jakarta Pusat"
+    },
+    "participants": [
+        {
+            "user_id": 1001,
+            "user_name": "Zaki",
+            "level": "agent",
+            "user_info": "Agent Malang"
+        },
+        {
+            "user_id": 1002,
+            "user_name": "Rudi",
+            "level": "agent",
+            "user_info": "Agent Jakarta Pusat"
+        },
+        {
+            "user_id": 1003,
+            "user_name": "Ulum",
+            "level": "agent",
+            "user_info": "Agent Jogja"
+        },
+        {
+            "user_id": 1004,
+            "user_name": "Danang",
+            "level": "agent",
+            "user_info": "Agent Jember"
+        },
+        {
+            "user_id": 1005,
+            "user_name": "Rian",
+            "level": "agent",
+            "user_info": "Agent Boyolali"
+        },
+        {
+            "user_id": 1006,
+            "user_name": "Riska",
+            "level": "agent",
+            "user_info": "Agent Bojonegoro"
+        },
+        {
+            "user_id": 1007,
+            "user_name": "Zahra",
+            "level": "agent",
+            "user_info": "Agent Jakarta Utara"
+        }
+    ]
+}

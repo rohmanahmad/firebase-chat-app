@@ -1,0 +1,24 @@
+{
+  "name": "chat",
+  "version": "1.0.0",
+  "description": "chat widget",
+  "main": "index.js",
+  "scripts": {
+    "serve": "yarn run live-server ./dist",
+    "serve2": "yarn run live-server ./backup",
+    "compile": "tsc"
+  },
+  "keywords": [
+    "chat"
+  ],
+  "author": "rohmanahmad <rohmanwebid@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "firebase": "^10.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "live-server": "^1.2.2",
+    "typescript": "^3.9.10"
+  }
+}
