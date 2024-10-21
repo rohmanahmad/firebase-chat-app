@@ -11,14 +11,28 @@
 </head>
 <body class="bg-yellow-100">
     <div class="flex flex-col items-center p-8 justify-center w-5xl h-screen md:text-center md:w-3xl ">
+        <p id="types">
+            <b>Select Type:</b><br/>
+            <ol>
+                <li><a href="?">Reset</a></li>
+                <li><a href="?type=leader-hume">Leader Hume</a></li>
+                <li><a href="?type=leader-bobon">Leader Bobon</a></li>
+                <li><a href="?type=agent-rudi">Agen Rudi / Hume</a></li>
+                <li><a href="?type=agent-zaki">Agen Zaki / Hume</a></li>
+                <li><a href="?type=agent-danang">Agen Danang / Hume</a></li>
+                <li><a href="?type=agent-rian">Agen Rian / Hume</a></li>
+                <li><a href="?type=agent-ulum">Agen Ulum / Hume</a></li>
+                <li><a href="?type=agent-riska">Agen Riska / Bobon</a></li>
+                <li><a href="?type=agent-zahra">Agen Zahra / Bobon</a></li>
+            </ol>
+        </p>
     </div>
-    <script src="./chat-module.js"></script>
+    <script src="./chat-module.js?c=123s123"></script>
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const type = urlParams.get('type');
-        if (!type) {
-            alert('Please Input user Type');
-        } else {
+        if (type) {
+            document.title = 'From ' + type;
             new ChatModule().registerAs(type).handle();
         }
     </script>

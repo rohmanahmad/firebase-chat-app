@@ -1,0 +1,16 @@
+{
+    "me": {
+        "user_id": 1007,
+        "user_name": "Zahra",
+        "level": "agent",
+        "user_info": "Agent Jakarta Utara"
+    },
+    "participants": [
+        {
+            "user_id": 2002,
+            "user_name": "Bobon Santoso",
+            "level": "leader",
+            "user_info": "Leader Jakarta Timur"
+        }
+    ]
+}

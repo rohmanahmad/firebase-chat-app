@@ -73,7 +73,7 @@ class Firebase {
     getConversationByGroupId (groupId='') {
         this.selectedGroup = this.contactsMapping.find(x => x.group_id === groupId);
         this.conversationsCollection.child(groupId).get().then(res => {
-            if (!res.exists()) return this.createConversationDummy(this.selectedGroup.group_id, this.selectedGroup.participant_id, this.me.user_id);//this.setNoConversation();
+            if (!res.exists()) return this.setNoConversation();
             const items = res.val();
             this.renderConversation(Object.values(items));
         })
@@ -92,29 +92,65 @@ class Firebase {
                 const item = doc.val();
                 this.notificationLastAuditTime = item.last_audit;
                 this.notifCount.innerHTML = item.count;
+                this.notifCount.setAttribute('title', `Last Audit: ${this.formatDate(item.last_audit)}`);
             }
         });
     }
 
     updateMessageIsRead (gId, items={}) {
+        let totalUnreadMessage = 0;
         const currentUserId = this.me.user_id;
         for (const key in items) {
             const isRead = items[key].is_read;
-            if (isRead) continue;
+            if (isRead || items[key].from === currentUserId) continue;
             this.conversationsCollection
                 .child(gId)
                 .child(key)
                 .update({
                     is_read: true,
                     read_at: new Date().getTime()
-                })
+                });
+            totalUnreadMessage -= 1;
+        }
+        if (totalUnreadMessage) {
             this.notifCountCollection
                 .child(currentUserId)
                 .update({
-                    count: firebase.database.ServerValue.increment(-1),
+                    count: firebase.database.ServerValue.increment(totalUnreadMessage),
                     last_audit: new Date().getTime()
                 });
         }
+    }
+
+    /**
+     * this function running once on start-up
+     * @returns void
+     */
+    initAuditUnreadMessage () {
+        if (this.contactsMapping.length === 0) return console.log('No Contacts Mapping Available.');
+        const userid = this.me.user_id;
+        this.notifCountCollection.child(userid).update({count: 0, last_audit: new Date().getTime()}).then(() => {
+            const groups = this.contactsMapping.map(x => x.group_id)
+            groups.forEach(groupId => {
+                this.conversationsCollection
+                    .child(groupId)
+                    .get()
+                    .then(doc => {
+                        if (!doc.exists()) return false; // do nothing
+                        const items = Object.values(doc.val());
+                        const currentDate = new Date().getTime();
+                        const filterItems = items.filter(x => !x.is_read && x.from !== userid);
+                        const total = filterItems.length;
+                        if (!total) return false;
+                        this.notifCountCollection
+                            .child(userid)
+                            .update({
+                                count: firebase.database.ServerValue.increment(total),
+                                last_audit: currentDate
+                            });
+                    })
+            })
+        })
     }
 }
 
@@ -125,7 +161,10 @@ class ChatModule extends Firebase {
     changeGroupAudio = new Audio('./assets/bell.mp3')
     sendMessageAudio = new Audio('./assets/bell2.mp3')
     unreadNotificationAudio = new Audio('./assets/bell3.mp3')
+    singleCheckSVG = '<svg width="15px" height="15px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 13L9 17L19 7" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    doubleCheckSVG = '<svg width="15px" height="15px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.5 12.5L5.57574 16.5757C5.81005 16.8101 6.18995 16.8101 6.42426 16.5757L9 14" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/><path d="M16 7L12 11" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/><path d="M7 12L11.5757 16.5757C11.8101 16.8101 12.1899 16.8101 12.4243 16.5757L22 7" stroke="#000000" stroke-width="1.5" stroke-linecap="round"/></svg>'
     groupNamePattern = 'g_@u1_@u2'
+    newSVG = '<svg width="20px" height="20px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22 5C22 6.65685 20.6569 8 19 8C17.3431 8 16 6.65685 16 5C16 3.34315 17.3431 2 19 2C20.6569 2 22 3.34315 22 5Z" fill="#1C274C"/><path opacity="0.5" d="M15.2347 2.53476C14.2201 2.1881 13.132 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04346 16.4525C3.22094 16.8088 3.28001 17.2161 3.17712 17.6006L2.58151 19.8267C2.32295 20.793 3.20701 21.677 4.17335 21.4185L6.39938 20.8229C6.78393 20.72 7.19121 20.7791 7.54753 20.9565C8.88836 21.6244 10.4003 22 12 22C17.5228 22 22 17.5228 22 12C22 10.868 21.8119 9.77987 21.4652 8.76526C20.7572 9.22981 19.9101 9.5 19 9.5C16.5147 9.5 14.5 7.48528 14.5 5C14.5 4.08987 14.7702 3.24284 15.2347 2.53476Z" fill="#1C274C"/></svg>'
     participantsMockup = [/* {user_id, user_name, level, user_info} */] // (array) data "participants" from API
     participantIdsMockup = [/* user_id:1, user_id:2 */] // (arrayMap) data "participants:user_id" from API
     contactsMapping = [ // dipakai untuk comboBox chat
@@ -200,20 +239,29 @@ class ChatModule extends Firebase {
                             x.participant_info = this.participantsMockup.find((o) => o.user_id === participantId);
                             return x
                         });
-                    this.setAvailableGroups(filteredGroups);
+                    if (filteredGroups.length === 0) {
+                        this.createRequiredGroups();
+                        this.setupParticipants(); // load ulang untuk mengeksekusi setAvailableGroups()
+                    } else {
+                        this.setAvailableGroups(filteredGroups);
+                    }
                 } else {
                     // create new group with all data reference
-                    const currentUserId = this.me.user_id
-                    for (const p of this.participantsMockup) {
-                        const groupId = this.groupNamePattern.replace('@u1', currentUserId).replace('@u2', p.user_id);
-                        this.createGroup(groupId, [currentUserId, p.user_id]);
-                    }
+                    this.createRequiredGroups();
+                    this.setupParticipants(); // load ulang untuk mengeksekusi setAvailableGroups()
                 }
             })
     }
 
-    /* rendering */
+    createRequiredGroups () {
+        const currentUserId = this.me.user_id
+        for (const p of this.participantsMockup) {
+            const groupId = this.groupNamePattern.replace('@u1', currentUserId).replace('@u2', p.user_id);
+            this.createGroup(groupId, [currentUserId, p.user_id]);
+        }
+    }
 
+    /* rendering */
     renderMainStyleLayout() {
         const style = document.createElement("style");
         style.innerHTML = `
@@ -256,6 +304,14 @@ class ChatModule extends Firebase {
                 border-radius: 0;
                 }
             }
+            .chat-notification {
+                position: absolute;
+                top: 62px;
+                right: 15px;
+                max-height: 23px;
+                padding-bottom: 2px;
+                padding-left: 2px;
+            }
         `;
 
         document.head.appendChild(style);
@@ -275,24 +331,26 @@ class ChatModule extends Firebase {
             </div>
             <div id="chat-popup" class="hidden absolute bottom-20 right-0 w-96 bg-white rounded-md shadow-md flex flex-col transition-all text-sm">
                 <div id="chat-header" class="flex justify-between items-center p-4 bg-blue-800 text-white rounded-t-md">
-                <h3 class="m-0 text-lg">
-                    Chat With : <select class="bg-blue-800 option-agent" id="contacts"></select>
-                    <span class="notif-chat" id="notif-chat">2</span>
-                </h3>
-                <button id="close-popup" class="bg-transparent border-none text-white cursor-pointer">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                    <h3 class="m-0 text-lg">
+                        Chat With : <select class="bg-blue-800 option-agent" id="contacts"></select>
+                        <span class="notif-chat" id="notif-chat">-</span>
+                    </h3>
+                    <button id="close-popup" class="bg-transparent border-none text-white cursor-pointer">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
+                <div id="chat-notification" class="chat-notification bg-transparent overflow-hidden"></div>
                 <div id="chat-messages" class="flex-1 p-4 overflow-y-auto"></div>
                 <div id="chat-input-container" class="p-4 border-t border-blue-200">
-                <div class="flex space-x-4 items-center">
-                    <input type="text" id="chat-input" class="flex-1 border border-blue-300 rounded-md px-4 py-2 outline-none w-3/4" placeholder="Type your message...">
-                    <button id="chat-submit" class="bg-blue-800 text-white rounded-md px-4 py-2 cursor-pointer">Send</button>
-                </div>
-                <div class="flex text-center text-xs pt-4">
-                </div>
+                    <div class="flex space-x-4 items-center">
+                        <input type="text" id="chat-input" class="flex-1 border border-blue-300 rounded-md px-4 py-2 outline-none w-3/4" placeholder="Type your message...">
+                        <button id="chat-submit" class="bg-blue-800 text-white rounded-md px-4 py-2 cursor-pointer">Send</button>
+                    </div>
+                    <div class="flex text-center text-xs pt-4">
+                        Powered By Humaedi
+                    </div>
                 </div>
             </div>
         `;
@@ -316,8 +374,8 @@ class ChatModule extends Firebase {
         const contactName = this.selectedGroup.participant_name;
         this.chatMessages.innerHTML = '';
         items.forEach(doc => {
-            if (doc.from === meId) this.addMessageFromMe({name: 'me', message: doc.message, date: this.formatDate(doc.date)});
-            else this.addMessageFromContact({name: contactName, message: doc.message, date: this.formatDate(doc.date)});
+            if (doc.from === meId) this.addMessageFromMe({name: 'me', message: doc.message, date: this.formatDate(doc.date), isRead: doc.is_read});
+            else this.addMessageFromContact({name: contactName, message: doc.message, date: this.formatDate(doc.date), isRead: doc.is_read});
         })
     }
 
@@ -333,6 +391,7 @@ class ChatModule extends Firebase {
         this.closePopup = document.getElementById('close-popup');
         this.contacts = document.getElementById('contacts');
         this.notifCount = document.getElementById('notif-chat');
+        this.notifChatContainer = document.getElementById('chat-notification');
         this.chatSubmit.addEventListener('click', function() {
             const message = self.chatInput.value.trim();
             if (!message) return;
@@ -377,40 +436,45 @@ class ChatModule extends Firebase {
         const groups = this.contactsMapping.map(x => x.group_id)
         groups.forEach(gId => {
             this.conversationsCollection.child(gId).on('value', (doc) => {
+                if (!doc.exists()) return false;
                 const currentDate = new Date().getTime();
                 const val = doc.val();
                 if (val) {
                     const items = Object.values(val)
-                    if (!this.selectedGroup || (this.selectedGroup && this.selectedGroup.group_id !== gId && userid)) {
-                        let total = items.filter(x => x.date > this.notificationLastAuditTime && x.is_read).length;
-                        debugger
-                        this.notifCountCollection.child(userid).update({
-                            count: firebase.database.ServerValue.increment(total),
-                            last_audit: currentDate
-                        })
+                    let filterItems = [], total = 0;
+                    if (!this.selectedGroup || (this.selectedGroup && this.selectedGroup.group_id !== gId)) {
+                        // total unread message under last time audit (which is the audit doesn't log the notification)
+                        filterItems = items.filter(x => x.date > this.notificationLastAuditTime && !x.is_read && x.from !== userid);
+                        const filterItemsFromAllUnread = items.filter(x => !x.is_read && x.from !== userid);
+                        total = filterItems.length;
+                        if (!total) return false;
+                        this.notifCountCollection
+                            .child(userid)
+                            .update({
+                                count: firebase.database.ServerValue.increment(total),
+                                last_audit: currentDate
+                            });
+                        this.showNotificationBadge(filterItemsFromAllUnread);
                         this.playUnreadNotificationBell();
-                        return false;
+                    } else {
+                        filterItems = items.filter(x => x.date > this.notificationLastAuditTime && !x.is_read && x.from !== userid);
+                        total = filterItems.length;
+                        if (total) {
+                            this.notifCountCollection
+                                .child(userid)
+                                .update({
+                                    count: firebase.database.ServerValue.increment(1),
+                                    last_audit: currentDate
+                                });
+                        }
+                        this.renderConversation(items);
                     }
-                    if (!doc.exists()) return false;
-                    this.renderConversation(items);
                 }
             })
         })
     }
 
     /* utilities */
-
-    randomText (length) {
-        let result = '';
-        const characters = 'ABCDEFGHIJKL MNOPQRSTUVWXYZ abcdefghijkl mnopqrstuvwxyz 0123456789 _ - ';
-        const charactersLength = characters.length;
-        let counter = 0;
-        while (counter < length) {
-            result += characters.charAt(Math.floor(Math.random() * charactersLength));
-            counter += 1;
-        }
-        return result;
-    }
 
     setNoConversation () {
         this.chatMessages.innerHTML = '<div class="text-warning-200">No Conversation</div>';
@@ -440,6 +504,31 @@ class ChatModule extends Firebase {
         this.unreadNotificationAudio.play();
     }
 
+    showNotificationBadge (filterItems=[]) {
+        const notifObject = filterItems.reduce((r, x) => {
+            if (!r[x.from]) r[x.from] = 0;
+            r[x.from] += 1;
+            return r;
+        }, {})
+        for (const i in notifObject) {
+            const u = this.contactsMapping.find(x => x.participant_id == i);
+            if (!u) return null;
+            this.removeNotificationBadgeByUser(u.participant_id);
+            const html = document.createElement('span');
+            html.className = "text-xs font-semibold inline-block py-1 px-2 rounded bg-green-200 last:mr-0 mr-1 " + u.participant_id;
+            html.innerHTML = `New from ${u.participant_name} (${notifObject[i]})`;
+            this.notifChatContainer.appendChild(html);
+        }
+    }
+
+    removeNotificationBadgeByUser (participantId) {
+        if (!participantId) participantId = this.selectedGroup.participant_id;
+        const elements = document.getElementsByClassName(participantId);
+        while(elements.length > 0){
+            elements[0].parentNode.removeChild(elements[0]);
+        }
+    }
+
     /**
      * filteredGroupData adalah data yg dipakai untuk listing contacts.
      * pengecekan akan dilakukan ketika on"value" triggered.
@@ -460,6 +549,7 @@ class ChatModule extends Firebase {
             console.info('No Any Invalid Group');
             this.renderContactsMapping();
             this.registerEventConversationsByGroup();
+            this.initAuditUnreadMessage();
         }
     }
 
@@ -468,19 +558,8 @@ class ChatModule extends Firebase {
     }
 
     /* chats zone */
-    createConversationDummy (gId, contactId, meId) {
-        const data = {
-            date: new Date().getTime(),
-            from: meId,
-            to: contactId,
-            message: 'Selamat Datang...',
-            is_read: false,
-            read_at: '-'
-        }
-        this.publishMessage(gId, data)
-    }
 
-    addMessageFromMe ({name, message, date}) {
+    addMessageFromMe ({name, message, date, isRead=false}) {
         // Handle user request here
         console.log('User request:', message);
         // Display user message
@@ -493,7 +572,10 @@ class ChatModule extends Firebase {
                         <span class="text-base font-semibold text-gray-900 dark:text-white">${name}</span>
                     </div>
                     <p class="text-sm font-normal py-2.5 text-gray-900 dark:text-white">${message}</p>
-                    <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${date}</span>
+                    <div class="text-xs font-normal text-gray-500 dark:text-gray-400">
+                        ${date}
+                        <span class="text-xs font-normal text-gray-500 dark:text-gray-100 inline float-left pt-1 pr-2">${isRead ? this.doubleCheckSVG : this.singleCheckSVG}</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -503,7 +585,7 @@ class ChatModule extends Firebase {
         this.chatInput.value = '';
     }
 
-    addMessageFromContact ({name, message, date}) {
+    addMessageFromContact ({name, message, date, isRead=false}) {
         const replyElement = document.createElement('div');
         replyElement.className = 'flex mb-3';
         replyElement.innerHTML = `
@@ -511,6 +593,7 @@ class ChatModule extends Firebase {
                 <div class="flex flex-col w-full max-w-[320px] min-w-[200px] leading-1.5 p-4 border-gray-200 bg-gray-100 rounded-e-xl rounded-es-xl dark:bg-gray-700">
                     <div class="flex items-center space-x-2 rtl:space-x-reverse">
                         <span class="text-base font-semibold text-gray-900 dark:text-white">${name}</span>
+                        ${isRead ? '':  this.newSVG}
                     </div>
                     <p class="text-sm font-normal py-2.5 text-gray-900 dark:text-white">${message}</p>
                     <span class="text-xs font-normal text-gray-500 dark:text-gray-400">${date}</span>
@@ -536,6 +619,7 @@ class ChatModule extends Firebase {
     updateIsReadMessagesInGroup () {
         if (!this.selectedGroup) return console.log('No Group Id Selected');
         const gId = this.selectedGroup.group_id;
+        this.removeNotificationBadgeByUser();
         this.conversationsCollection.child(gId).get().then(doc => {
             if (!doc.exists()) return null;
             const itemsObject = doc.val();

@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "serve": "yarn run live-server ./dist",
-    "serve2": "yarn run live-server ./backup",
+    "serve2": "yarn run live-server ./vanillaJS",
     "compile": "tsc"
   },
   "keywords": [

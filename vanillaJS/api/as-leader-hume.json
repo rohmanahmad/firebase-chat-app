@@ -35,18 +35,6 @@
             "user_name": "Rian",
             "level": "agent",
             "user_info": "Agent Boyolali"
-        },
-        {
-            "user_id": 1006,
-            "user_name": "Riska",
-            "level": "agent",
-            "user_info": "Agent Bojonegoro"
-        },
-        {
-            "user_id": 1007,
-            "user_name": "Zahra",
-            "level": "agent",
-            "user_info": "Agent Jakarta Utara"
         }
     ]
 }
